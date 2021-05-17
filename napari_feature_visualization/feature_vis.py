@@ -6,61 +6,14 @@ see: https://napari.org/docs/dev/plugins/hook_specifications.html
 
 Replace code below according to your needs.
 """
-from napari_plugin_engine import napari_hook_implementation
-from qtpy.QtWidgets import QWidget, QHBoxLayout, QPushButton
+from napari import Viewer
 from magicgui import magic_factory
 import pathlib
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-from enum import Enum
-from functools import lru_cache
-from napari import Viewer
+from .utils import get_df, ColormapChoices
 
-
-class ColormapChoices(Enum):
-    viridis='viridis'
-    plasma='plasma'
-    inferno='inferno'
-    magma='magma'
-    cividis='cividis'
-    Greys='Greys'
-    Purples='Purples'
-    Blues='Blues'
-    Greens='Greens'
-    Oranges='Oranges'
-    Reds='Reds'
-    YlOrBr='YlOrBr'
-    YlOrRd='YlOrRd'
-    OrRd='OrRd'
-    PuRd='PuRd'
-    RdPu='RdPu'
-    BuPu='BuPu'
-    GnBu='GnBu'
-    PuBu='PuBu'
-    YlGnBu='YlGnBu'
-    PuBuGn='PuBuGn'
-    BuGn='BuGn'
-    YlGn='YlGn'
-    PiYG='PiYG'
-    PRGn='PRGn'
-    BrBG='BrBG'
-    PuOr='PuOr'
-    RdGy='RdGy'
-    RdBu='RdBu'
-    RdYlBu='RdYlBu'
-    RdYlGn='RdYlGn'
-    Spectral='Spectral'
-    coolwarm='coolwarm'
-    bwr='bwr'
-    seismic='seismic'
-    turbo='turbo'
-    jet='jet'
-
-
-@lru_cache(maxsize=16)
-def get_df(path):
-    return pd.read_csv(path)
 
 def _init(widget):
     def get_feature_choices(*args):
@@ -273,10 +226,3 @@ def feature_vis(label_layer: "napari.layers.Labels",
             # If a napari version before 0.4.8 is used, this can't be displayed yet
             # This this thread on the bug: https://github.com/napari/napari/issues/2477
             print("Can't set label properties in napari versions < 0.4.8")
-
-
-@napari_hook_implementation
-def napari_experimental_provide_dock_widget():
-    # you can return either a single widget, or a sequence of widgets
-    #return [ExampleQWidget, example_magic_widget, feature_vis]
-    return feature_vis
