@@ -17,8 +17,7 @@ from .utils import get_df, ColormapChoices
 
 
 def _init(widget):
-
-        
+    
     @widget.DataFrame.changed.connect
     def update_df_columns(event):
         
@@ -43,6 +42,7 @@ def _init(widget):
             widget.time_column.value = 'timepoint'
         elif 'Timepoint' in features:
             widget.time_column.value = 'Timepoint'
+            
 
     @widget.feature.changed.connect
     def update_rescaling(event):
@@ -54,6 +54,7 @@ def _init(widget):
         except KeyError:
             # Don't update the limits if a feature name is entered that isn't in the dataframe
             pass
+    
     
     @widget.call_button.changed.connect
     def apply_changes(event):
@@ -168,7 +169,3 @@ def feature_vis(label_layer: "napari.layers.Labels",
                 df=Image):
     
     pass
-
-
-    
-        
