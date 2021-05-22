@@ -14,7 +14,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from .utils import get_df, ColormapChoices
-from napari_feature_visualization.utils import get_df, ColormapChoices
+
 
 def _init(widget):
 
@@ -109,9 +109,6 @@ def _init(widget):
             widget.time_column.visible = False
             widget.viewer.value.dims.events.disconnect
     
-            
-
-
 
 '''
 def _init(widget):
