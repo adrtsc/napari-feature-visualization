@@ -8,39 +8,26 @@ Replace code below according to your needs.
 """
 from napari import Viewer
 from magicgui import magic_factory
+from napari.layers import Image
 import pathlib
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from .utils import get_df, ColormapChoices
-
+from napari_feature_visualization.utils import get_df, ColormapChoices
 
 def _init(widget):
-    def get_feature_choices(*args):
-        try:
-            df = get_df(widget.DataFrame.value)
-            return list(df.columns)
-        except IOError:
-            return [""]
 
-    # set feature and label_column "default choices"
-    # to be a function that gets the column names of the
-    # currently loaded dataframe
-    widget.feature._default_choices = get_feature_choices
-    widget.label_column._default_choices = get_feature_choices
-    widget.time_column._default_choices = get_feature_choices
-    widget.time_column.enabled = False
-
+        
     @widget.DataFrame.changed.connect
     def update_df_columns(event):
-        # event value will be the new path
-        # get_df will give you the cached df
-        # ...reset_choices() calls the "get_feature_choices" function above
-        # to keep them updated with the current dataframe
-        widget.feature.reset_choices()
-        widget.label_column.reset_choices()
-        widget.time_column.reset_choices()
+        
+        widget.df.value = get_df(widget.DataFrame.value)
+        widget.feature.choices = list(widget.df.value.columns)
+        widget.label_column.choices = list(widget.df.value.columns)
+        widget.time_column.choices = list(widget.df.value.columns)
         features = widget.feature.choices
+        
         if 'label' in features:
             widget.label_column.value = 'label'
         elif 'Label' in features:
@@ -67,13 +54,63 @@ def _init(widget):
         except KeyError:
             # Don't update the limits if a feature name is entered that isn't in the dataframe
             pass
-
+    
+    @widget.call_button.changed.connect
+    def apply_changes(event):
+        
+        full_df = widget.df.value
+        
+        if widget.timeseries.value:
+            site_df = full_df.loc[
+                full_df[widget.time_column.value] == widget.viewer.value.dims.current_step[0]]
+        else:
+            site_df = full_df
+        
+        site_df.loc[:, 'label'] = site_df[
+            str(widget.label_column.value)].astype(int)
+        # Check that there is one unique label for every entry in the dataframe
+        # => It's a site dataframe, not one containing many different sites
+        # TODO: How to feedback this issue to the user?
+        assert len(site_df['label'].unique()) == len(site_df), 'A feature dataframe with non-unique labels was provided. The visualize_feature_on_label_layer function is not designed for this.'
+        # Rescale feature between 0 & 1 to make a colormap
+        site_df['feature_scaled'] = (
+            (site_df[widget.feature.value] - widget.lower_contrast_limit.value) /
+            (widget.upper_contrast_limit.value - widget.lower_contrast_limit.value)
+        )
+        # Cap the measurement between 0 & 1
+        site_df.loc[site_df['feature_scaled'] < 0, 'feature_scaled'] = 0
+        site_df.loc[site_df['feature_scaled'] > 1, 'feature_scaled'] = 1
+    
+        colors = plt.cm.get_cmap(widget.Colormap.value.value)(site_df['feature_scaled'])
+    
+        # Create an array where the index is the label value and the value is
+        # the feature value
+        properties_array = np.zeros(site_df['label'].max() + 1)
+        properties_array[site_df['label']] = site_df[widget.feature.value]
+        label_properties = {widget.feature.value: np.round(properties_array, decimals=2)}
+    
+        colormap = dict(zip(site_df['label'], colors))
+        widget.label_layer.value.color = colormap
+        try:
+            widget.label_layer.value.properties = label_properties
+        except UnboundLocalError:
+            # If a napari version before 0.4.8 is used, this can't be displayed yet
+            # This this thread on the bug: https://github.com/napari/napari/issues/2477
+            print("Can't set label properties in napari versions < 0.4.8")
+            
+            
     @widget.timeseries.changed.connect
     def update_timeseries(event):
-        if widget.timeseries.value == True:
-            widget.time_column.enabled = True
+        if widget.timeseries.value:
+            widget.time_column.visible = True
+            widget.viewer.value.dims.events.disconnect
+            widget.viewer.value.dims.events.connect(apply_changes)
         else:
-            widget.time_column.enabled = False
+            widget.time_column.visible = False
+            widget.viewer.value.dims.events.disconnect
+    
+            
+
 
 
 '''
@@ -118,7 +155,8 @@ def _init(widget):
         upper_contrast_limit={"min": -100000000, "max": 100000000},
         feature = {"choices": [""]},
         label_column = {"choices": [""]},
-        time_column = {"choices": [""]}, widget_init=_init,
+        time_column = {"choices": [""], 'visible': False},
+        widget_init=_init,
         )
 def feature_vis(label_layer: "napari.layers.Labels",
                 viewer: Viewer,
@@ -128,101 +166,12 @@ def feature_vis(label_layer: "napari.layers.Labels",
                 timeseries = False,
                 time_column = '',
                 Colormap=ColormapChoices.viridis,
-                lower_contrast_limit: float = 100, upper_contrast_limit: float = 900):
-    site_df = get_df(DataFrame)
+                lower_contrast_limit: float = 100,
+                upper_contrast_limit: float = 900,
+                df=Image):
     
-    if timeseries == True:
-        
-        current_df = site_df.loc[site_df[time_column] == viewer.dims.current_step[0]]
-        current_df.loc[:, 'label'] =current_df[str(label_column)].astype(int)
-        # Check that there is one unique label for every entry in the dataframe
-        # => It's a site dataframe, not one containing many different sites
-        # TODO: How to feedback this issue to the user?
-        assert len(current_df['label'].unique()) == len(current_df), 'A feature dataframe with non-unique labels was provided. The visualize_feature_on_label_layer function is not designed for this.'
-        # Rescale feature between 0 & 1 to make a colormap
-        current_df['feature_scaled'] = ((current_df[feature] - lower_contrast_limit) / (upper_contrast_limit - lower_contrast_limit))
-        # Cap the measurement between 0 & 1
-        current_df.loc[current_df['feature_scaled'] < 0, 'feature_scaled'] = 0
-        current_df.loc[current_df['feature_scaled'] > 1, 'feature_scaled'] = 1
-    
-        colors = plt.cm.get_cmap(Colormap.value)(current_df['feature_scaled'])
-    
-        # Create an array where the index is the label value and the value is
-        # the feature value
-        properties_array = np.zeros(current_df['label'].max() + 1)
-        properties_array[current_df['label']] =current_df[feature]
-        label_properties = {feature: np.round(properties_array, decimals=2)}
-    
-        colormap = dict(zip(current_df['label'], colors))
-        label_layer.color = colormap
-        try:
-            label_layer.properties = label_properties
-        except UnboundLocalError:
-            # If a napari version before 0.4.8 is used, this can't be displayed yet
-            # This this thread on the bug: https://github.com/napari/napari/issues/2477
-            print("Can't set label properties in napari versions < 0.4.8")
-            
-            
-        def update_time(event):
-            current_df = site_df.loc[site_df[time_column] == viewer.dims.current_step[0]]
-            current_df.loc[:, 'label'] =current_df[str(label_column)].astype(int)
-            # Check that there is one unique label for every entry in the dataframe
-            # => It's a site dataframe, not one containing many different sites
-            # TODO: How to feedback this issue to the user?
-            assert len(current_df['label'].unique()) == len(current_df), 'A feature dataframe with non-unique labels was provided. The visualize_feature_on_label_layer function is not designed for this.'
-            # Rescale feature between 0 & 1 to make a colormap
-            current_df['feature_scaled'] = ((current_df[feature] - lower_contrast_limit) / (upper_contrast_limit - lower_contrast_limit))
-            # Cap the measurement between 0 & 1
-            current_df.loc[current_df['feature_scaled'] < 0, 'feature_scaled'] = 0
-            current_df.loc[current_df['feature_scaled'] > 1, 'feature_scaled'] = 1
-        
-            colors = plt.cm.get_cmap(Colormap.value)(current_df['feature_scaled'])
-        
-            # Create an array where the index is the label value and the value is
-            # the feature value
-            properties_array = np.zeros(current_df['label'].max() + 1)
-            properties_array[current_df['label']] =current_df[feature]
-            label_properties = {feature: np.round(properties_array, decimals=2)}
-        
-            colormap = dict(zip(current_df['label'], colors))
-            label_layer.color = colormap
-            try:
-                label_layer.properties = label_properties
-            except UnboundLocalError:
-                # If a napari version before 0.4.8 is used, this can't be displayed yet
-                # This this thread on the bug: https://github.com/napari/napari/issues/2477
-                print("Can't set label properties in napari versions < 0.4.8")
+    pass
 
-        viewer.dims.events.disconnect()
-        viewer.dims.events.connect(update_time)
+
+    
         
-    else:
-        site_df.loc[:, 'label'] = site_df[str(label_column)].astype(int)
-        # Check that there is one unique label for every entry in the dataframe
-        # => It's a site dataframe, not one containing many different sites
-        # TODO: How to feedback this issue to the user?
-        assert len(site_df['label'].unique()) == len(site_df), 'A feature dataframe with non-unique labels was provided. The visualize_feature_on_label_layer function is not designed for this.'
-        # Rescale feature between 0 & 1 to make a colormap
-        site_df['feature_scaled'] = (
-            (site_df[feature] - lower_contrast_limit) / (upper_contrast_limit - lower_contrast_limit)
-        )
-        # Cap the measurement between 0 & 1
-        site_df.loc[site_df['feature_scaled'] < 0, 'feature_scaled'] = 0
-        site_df.loc[site_df['feature_scaled'] > 1, 'feature_scaled'] = 1
-    
-        colors = plt.cm.get_cmap(Colormap.value)(site_df['feature_scaled'])
-    
-        # Create an array where the index is the label value and the value is
-        # the feature value
-        properties_array = np.zeros(site_df['label'].max() + 1)
-        properties_array[site_df['label']] = site_df[feature]
-        label_properties = {feature: np.round(properties_array, decimals=2)}
-    
-        colormap = dict(zip(site_df['label'], colors))
-        label_layer.color = colormap
-        try:
-            label_layer.properties = label_properties
-        except UnboundLocalError:
-            # If a napari version before 0.4.8 is used, this can't be displayed yet
-            # This this thread on the bug: https://github.com/napari/napari/issues/2477
-            print("Can't set label properties in napari versions < 0.4.8")

@@ -52,5 +52,7 @@ df.to_csv('test_df.csv', index=False)
 
 viewer = napari.Viewer()
 viewer.add_labels(label_image, name='labels')
+viewer.add_image(label_image, name='labels')
 
-
+widget = feature_vis()
+viewer.window.add_dock_widget(widget)
