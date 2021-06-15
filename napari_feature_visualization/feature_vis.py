@@ -1,39 +1,49 @@
 """
 This module is an example of a barebones QWidget plugin for napari
-
 It implements the ``napari_experimental_provide_dock_widget`` hook specification.
 see: https://napari.org/docs/dev/plugins/hook_specifications.html
-
 Replace code below according to your needs.
 """
 from napari import Viewer
 from magicgui import magic_factory
-from napari.layers import Image
 import pathlib
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-from .utils import get_df, ColormapChoices
-
+from napari_feature_visualization.utils import get_df, ColormapChoices
 
 def _init(widget):
-    
+    def get_feature_choices(*args):
+        try:
+            df = get_df(widget.DataFrame.value)
+            return list(df.columns)
+        except IOError:
+            return [""]
+
+    # set feature and label_column "default choices"
+    # to be a function that gets the column names of the
+    # currently loaded dataframe
+    widget.feature._default_choices = get_feature_choices
+    widget.label_column._default_choices = get_feature_choices
+    widget.time_column._default_choices = get_feature_choices
+
     @widget.DataFrame.changed.connect
     def update_df_columns(event):
-        
-        widget.df.value = get_df(widget.DataFrame.value)
-        widget.feature.choices = list(widget.df.value.columns)
-        widget.label_column.choices = list(widget.df.value.columns)
-        widget.time_column.choices = list(widget.df.value.columns)
+        # event value will be the new path
+        # get_df will give you the cached df
+        # ...reset_choices() calls the "get_feature_choices" function above
+        # to keep them updated with the current dataframe
+        widget.feature.reset_choices()
+        widget.label_column.reset_choices()
+        widget.time_column.reset_choices()
         features = widget.feature.choices
-        
         if 'label' in features:
             widget.label_column.value = 'label'
         elif 'Label' in features:
             widget.label_column.value = 'Label'
         elif 'index' in features:
             widget.label_column.value = 'index'
-
+            
         if 'time' in features:
             widget.time_column.value = 'time'
         elif 'Time' in features:
@@ -42,7 +52,6 @@ def _init(widget):
             widget.time_column.value = 'timepoint'
         elif 'Timepoint' in features:
             widget.time_column.value = 'Timepoint'
-            
 
     @widget.feature.changed.connect
     def update_rescaling(event):
@@ -54,21 +63,19 @@ def _init(widget):
         except KeyError:
             # Don't update the limits if a feature name is entered that isn't in the dataframe
             pass
-    
-    
+        
     @widget.call_button.changed.connect
     def apply_changes(event):
+        site_df = get_df(widget.DataFrame.value)
         
-        full_df = widget.df.value
+        # if user ticks the timeseries box, update the dataframe by time
         
         if widget.timeseries.value:
-            site_df = full_df.loc[
-                full_df[widget.time_column.value] == widget.viewer.value.dims.current_step[0]]
+            site_df = site_df.loc[site_df[widget.time_column.value] == widget.viewer.value.dims.current_step[0]]
         else:
-            site_df = full_df
+            pass
         
-        site_df.loc[:, 'label'] = site_df[
-            str(widget.label_column.value)].astype(int)
+        site_df.loc[:, 'label'] = site_df[str(widget.label_column.value)].astype(int)
         # Check that there is one unique label for every entry in the dataframe
         # => It's a site dataframe, not one containing many different sites
         # TODO: How to feedback this issue to the user?
@@ -99,7 +106,6 @@ def _init(widget):
             # This this thread on the bug: https://github.com/napari/napari/issues/2477
             print("Can't set label properties in napari versions < 0.4.8")
             
-            
     @widget.timeseries.changed.connect
     def update_timeseries(event):
         if widget.timeseries.value:
@@ -109,7 +115,6 @@ def _init(widget):
         else:
             widget.time_column.visible = False
             widget.viewer.value.dims.events.disconnect
-    
 
 '''
 def _init(widget):
@@ -129,8 +134,6 @@ def _init(widget):
             widget.label_column.value = 'Label'
         elif 'index' in features:
             widget.label_column.value = 'index'
-
-
     @widget.feature.changed.connect
     def update_rescaling(event):
         df = get_df(widget.DataFrame.value)
@@ -153,8 +156,7 @@ def _init(widget):
         upper_contrast_limit={"min": -100000000, "max": 100000000},
         feature = {"choices": [""]},
         label_column = {"choices": [""]},
-        time_column = {"choices": [""], 'visible': False},
-        widget_init=_init,
+        time_column = {"choices": [""], 'visible': False}, widget_init=_init,
         )
 def feature_vis(label_layer: "napari.layers.Labels",
                 viewer: Viewer,
@@ -164,8 +166,6 @@ def feature_vis(label_layer: "napari.layers.Labels",
                 timeseries = False,
                 time_column = '',
                 Colormap=ColormapChoices.viridis,
-                lower_contrast_limit: float = 100,
-                upper_contrast_limit: float = 900,
-                df=Image):
+                lower_contrast_limit: float = 100, upper_contrast_limit: float = 900):
     
     pass
