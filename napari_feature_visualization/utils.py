@@ -60,3 +60,5 @@ class ColormapChoices(Enum):
     seismic='seismic'
     turbo='turbo'
     jet='jet'
+    tab10='tab10'
+    tab20='tab20'
